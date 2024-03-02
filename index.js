@@ -74,7 +74,6 @@ app.post("/add", async (req, res) => {
     const countryCode = data.country_code;
     console.log(countryCode);
     try {
-      console.log(4321);
       await db.query(
         "INSERT INTO visited_countries (country_code,user_id) VALUES ($1,$2)",
         [countryCode, currentUserId]
@@ -97,14 +96,9 @@ app.post("/user", async (req, res) => {
 });
 
 app.post("/new", async (req, res) => {
-  console.log(req.body);
   const result = await db.query(
     `insert into users (name, color) values ('${req.body.name}', '${req.body.color}' ) returning *`
   );
-  console.log(result.rows);
-
-  console.log("users: ", await getUsers());
-  console.log(result.rows);
   currentUserId = result.rows[0].id;
   res.redirect("/");
 });
