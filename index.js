@@ -1,6 +1,7 @@
 import express from "express";
 import bodyParser from "body-parser";
 import pg from "pg";
+import morgan from "morgan";
 
 const app = express();
 const port = 3000;
@@ -16,28 +17,47 @@ db.connect();
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
+morgan.token("customDate", () => {
+  const currentDate = new Date().toISOString();
+  return currentDate;
+});
+app.use(
+  morgan(
+    ":method :url :status :response-time ms - :res[content-length] :customDate"
+  )
+);
 
 let currentUserId = 1;
 
-let users = [
-  { id: 1, name: "Angela", color: "teal" },
-  { id: 2, name: "Jack", color: "powderblue" },
-];
+async function getUsers() {
+  const result = await db.query("select * from users");
+  return result.rows;
+}
+
+let users = await getUsers();
 
 async function checkVisisted() {
-  const result = await db.query("SELECT country_code FROM visited_countries");
+  let sql = `
+  select country_code
+  from visited_countries vc 
+  join users us 
+  on us.id = vc.user_id
+  where us.id = ${currentUserId} ;
+`;
+  const result = await db.query(sql);
   let countries = [];
   result.rows.forEach((country) => {
     countries.push(country.country_code);
   });
   return countries;
 }
+
 app.get("/", async (req, res) => {
   const countries = await checkVisisted();
   res.render("index.ejs", {
     countries: countries,
     total: countries.length,
-    users: users,
+    users: await getUsers(),
     color: "teal",
   });
 });
@@ -46,16 +66,18 @@ app.post("/add", async (req, res) => {
 
   try {
     const result = await db.query(
-      "SELECT country_code FROM countries WHERE LOWER(country_name) LIKE '%' || $1 || '%';",
+      "SELECT country_code FROM countries WHERE LOWER(country_name) LIKE $1 || '%';",
       [input.toLowerCase()]
     );
 
     const data = result.rows[0];
     const countryCode = data.country_code;
+    console.log(countryCode);
     try {
+      console.log(4321);
       await db.query(
-        "INSERT INTO visited_countries (country_code) VALUES ($1)",
-        [countryCode]
+        "INSERT INTO visited_countries (country_code,user_id) VALUES ($1,$2)",
+        [countryCode, currentUserId]
       );
       res.redirect("/");
     } catch (err) {
@@ -65,11 +87,26 @@ app.post("/add", async (req, res) => {
     console.log(err);
   }
 });
-app.post("/user", async (req, res) => {});
+app.post("/user", async (req, res) => {
+  if (req.body.add === "new") {
+    res.render("new.ejs");
+  } else {
+    currentUserId = req.body.user;
+    res.redirect("/");
+  }
+});
 
 app.post("/new", async (req, res) => {
-  //Hint: The RETURNING keyword can return the data that was inserted.
-  //https://www.postgresql.org/docs/current/dml-returning.html
+  console.log(req.body);
+  const result = await db.query(
+    `insert into users (name, color) values ('${req.body.name}', '${req.body.color}' ) returning *`
+  );
+  console.log(result.rows);
+
+  console.log("users: ", await getUsers());
+  console.log(result.rows);
+  currentUserId = result.rows[0].id;
+  res.redirect("/");
 });
 
 app.listen(port, () => {
